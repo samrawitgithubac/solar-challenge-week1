@@ -3,4 +3,4 @@ venv/
 __pycache__/
 *.pyc
 data/
-Remove-Item -Recurse -Force foldername
+*.csv
