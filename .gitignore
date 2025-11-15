@@ -3,3 +3,4 @@ venv/
 __pycache__/
 *.pyc
 
+Remove-Item -Recurse -Force foldername
