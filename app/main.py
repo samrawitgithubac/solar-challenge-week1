@@ -33,7 +33,54 @@ def get_top_regions(df, metric="GHI", top_n=5):
 # Page Config
 # -------------------------------
 st.set_page_config(page_title="🌞 Solar Farm Dashboard", layout="wide")
+# -------------------------------
+# Custom Styling for Sidebar
+# -------------------------------
+st.markdown("""
+    <style>
+        /* Sidebar background color */
+        [data-testid="stSidebar"] {
+            background-color: #F8FBFF; /* light sky blue */
+            padding: 20px;
+        }
+
+        /* Sidebar title */
+        .sidebar-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #FFB000; /* Solar orange */
+            margin-bottom: 10px;
+        }
+
+        /* Sidebar labels */
+        [data-testid="stSidebar"] label {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333 !important; 
+        }
+
+        /* Sidebar multiselect box */
+        .stMultiSelect > div > div {
+            border: 2px solid #FFB000 !important;
+            border-radius: 8px;
+        }
+
+        /* Sidebar text */
+        [data-testid="stSidebar"] p {
+            color: #444;
+            font-size: 15px;
+        }
+
+        /* Hover effect for options */
+        .css-1n76uvr:hover {
+            background-color: #FFECB3 !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("🌞 Cross-Country Solar Farm Dashboard")
+st.sidebar.markdown('<p class="sidebar-title">🌍 Dashboard Controls</p>', unsafe_allow_html=True)
+
 st.markdown("Compare solar potential across Benin, Sierra Leone, and Togo")
 
 # -------------------------------
