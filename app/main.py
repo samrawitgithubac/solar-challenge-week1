@@ -8,165 +8,161 @@ from windrose import WindroseAxes
 import numpy as np
 
 # -------------------------------
-# Utility functions
-# -------------------------------
-def load_uploaded_data(uploaded_file):
-    try:
-        df = pd.read_csv(uploaded_file, parse_dates=["Timestamp"])
-        return df
-    except Exception as e:
-        st.error(f"Error loading file: {e}")
-        return None
-
-def get_summary_stats(df, columns=["GHI", "DNI", "DHI"]):
-    available_cols = [col for col in columns if col in df.columns]
-    return df[available_cols].agg(["mean", "median", "std"]).T.reset_index().rename(columns={"index": "Metric"})
-
-def get_top_regions(df, metric="GHI", top_n=5):
-    if "Region" in df.columns:
-        return df.nlargest(top_n, metric)[["Region", metric]]
-    elif metric in df.columns:
-        return df.nlargest(top_n, metric)[[metric]]
-    else:
-        return pd.DataFrame()
-
-# -------------------------------
 # Page Config
 # -------------------------------
 st.set_page_config(page_title="🌞 Solar Farm Dashboard", layout="wide")
+st.title("🌞 Solar Farm Dashboard (Memory-Efficient)")
 
 # -------------------------------
 # Sidebar - File Upload
 # -------------------------------
-st.sidebar.header("Upload your dataset")
-uploaded_file = st.sidebar.file_uploader(
-    "Upload a CSV file for analysis:",
-    type=["csv"]
+st.sidebar.header("Upload your dataset(s)")
+uploaded_files = st.sidebar.file_uploader(
+    "Upload CSV files (one per country):",
+    type=["csv"],
+    accept_multiple_files=True
 )
 
-if not uploaded_file:
-    st.warning("Please upload a CSV file to continue.")
+if not uploaded_files:
+    st.warning("Please upload at least one CSV file to continue.")
     st.stop()
 
-# Load dataset
-df = load_uploaded_data(uploaded_file)
-if df is None or df.empty:
-    st.warning("No valid data loaded.")
+# -------------------------------
+# Utility Functions
+# -------------------------------
+def load_data(uploaded_file, max_rows=5000):
+    """Load CSV and limit rows for memory efficiency."""
+    try:
+        df = pd.read_csv(uploaded_file, parse_dates=["Timestamp"])
+        if len(df) > max_rows:
+            df = df.head(max_rows)
+        return df
+    except Exception as e:
+        st.error(f"Failed to load {uploaded_file.name}: {e}")
+        return None
+
+def get_summary_stats(df, columns=["GHI", "DNI", "DHI"]):
+    cols = [c for c in columns if c in df.columns]
+    if not cols:
+        return pd.DataFrame()
+    return df[cols].agg(["mean","median","std"]).T.reset_index().rename(columns={"index":"Metric"})
+
+def get_top_regions(df, metric="GHI", top_n=5):
+    if "Region" in df.columns and metric in df.columns:
+        return df.nlargest(top_n, metric)[["Region", metric]]
+    elif metric in df.columns:
+        return df.nlargest(top_n, metric)[[metric]]
+    return pd.DataFrame()
+
+# -------------------------------
+# Load datasets (lazy)
+# -------------------------------
+data_dict = {}
+for f in uploaded_files:
+    df = load_data(f)
+    if df is not None:
+        country = f.name.split(".")[0]
+        data_dict[country] = df
+
+if not data_dict:
+    st.warning("No valid CSV files loaded.")
     st.stop()
 
-# Limit dataset size for plotting (memory-friendly)
-MAX_ROWS = 5000
-if len(df) > MAX_ROWS:
-    st.warning(f"Dataset is large ({len(df)} rows). Only first {MAX_ROWS} rows will be used for plots.")
-    df_plot = df.head(MAX_ROWS)
-else:
-    df_plot = df.copy()
+countries = list(data_dict.keys())
 
 # -------------------------------
-# Dashboard Title
+# Sidebar - Select dataset for plots
 # -------------------------------
-st.title("🌞 Solar Farm Dashboard (User Upload Mode)")
-st.markdown("Analyze solar potential from your uploaded dataset.")
+selected_country = st.sidebar.selectbox("Select country for analysis:", countries)
+df = data_dict[selected_country]
 
 # -------------------------------
 # Boxplots for GHI, DNI, DHI
 # -------------------------------
 st.header("☀️ Solar Irradiance Comparison")
-for metric in ["GHI", "DNI", "DHI"]:
-    if metric in df_plot.columns:
+for metric in ["GHI","DNI","DHI"]:
+    if metric in df.columns:
         st.subheader(f"{metric} Distribution")
-        fig, ax = plt.subplots(figsize=(8, 5))
-        sns.boxplot(y=df_plot[metric], ax=ax, palette="Set2")
-        sns.stripplot(y=df_plot[metric], color="black", alpha=0.3, jitter=0.2, ax=ax)
+        fig, ax = plt.subplots(figsize=(8,5))
+        sns.boxplot(y=df[metric], ax=ax, palette="Set2")
+        sns.stripplot(y=df[metric], color="black", alpha=0.3, jitter=0.2, ax=ax)
         st.pyplot(fig)
     else:
-        st.info(f"{metric} column not found in dataset.")
+        st.info(f"{metric} column not found.")
 
 # -------------------------------
 # Summary Table
 # -------------------------------
-st.header("📊 Summary Table of Solar Metrics")
-st.table(get_summary_stats(df))
+st.header("📊 Summary Table")
+summary_df = get_summary_stats(df)
+if not summary_df.empty:
+    st.table(summary_df)
+else:
+    st.info("No valid solar metrics found in this dataset.")
 
 # -------------------------------
-# Interactive Time Series Plot
+# Time Series Plot
 # -------------------------------
 st.header("📈 Interactive Solar Trends")
-available_metrics = [col for col in ["GHI", "DNI", "DHI"] if col in df.columns]
+available_metrics = [c for c in ["GHI","DNI","DHI"] if c in df.columns]
 if "Timestamp" in df.columns and available_metrics:
-    metric_to_plot = st.selectbox("Select metric for time series:", available_metrics)
-    fig2 = px.line(
-        df_plot,
-        x="Timestamp",
-        y=metric_to_plot,
-        title=f"{metric_to_plot} Over Time",
-        labels={"Timestamp": "Time", metric_to_plot: metric_to_plot}
-    )
+    metric = st.selectbox("Select metric:", available_metrics)
+    fig2 = px.line(df, x="Timestamp", y=metric, title=f"{metric} Over Time - {selected_country}")
     fig2.update_layout(height=400)
     st.plotly_chart(fig2, use_container_width=True)
 else:
-    st.info("Timestamp or solar metric columns not found for time series plot.")
+    st.info("Timestamp or solar metrics not found for time series.")
 
 # -------------------------------
 # Top Regions by GHI
 # -------------------------------
 st.header("🏆 Top 5 Regions by GHI")
-if "GHI" in df.columns:
-    top_regions = get_top_regions(df, metric="GHI")
-    if not top_regions.empty:
-        st.table(top_regions)
-    else:
-        st.info("Region column not found for top regions analysis.")
+top_regions = get_top_regions(df, "GHI")
+if not top_regions.empty:
+    st.table(top_regions)
 else:
-    st.info("GHI column not found for top regions analysis.")
+    st.info("Region or GHI column not available.")
 
 # -------------------------------
-# Bubble Chart: GHI vs Ambient Temperature
+# Bubble Chart: GHI vs Tamb
 # -------------------------------
-st.header("💨 Bubble Chart: GHI vs Ambient Temperature")
-if all(col in df_plot.columns for col in ["Tamb", "GHI", "RH", "DHI"]):
+st.header("💨 Bubble Chart: GHI vs Ambient Temp")
+if all(c in df.columns for c in ["Tamb","GHI","RH","DHI"]):
     fig3 = px.scatter(
-        df_plot,
-        x="Tamb",
-        y="GHI",
-        size="RH",
-        color="DHI",
-        hover_data=["Timestamp"] if "Timestamp" in df_plot.columns else None,
-        title="GHI vs Ambient Temperature with RH as bubble size",
-        labels={"Tamb": "Ambient Temp (°C)", "GHI": "Global Horizontal Irradiance"}
+        df, x="Tamb", y="GHI", size="RH", color="DHI",
+        hover_data=["Timestamp"] if "Timestamp" in df.columns else None,
+        title="GHI vs Ambient Temp with RH as bubble size"
     )
     st.plotly_chart(fig3, use_container_width=True)
 else:
-    st.info("Columns required for bubble chart (Tamb, GHI, RH, DHI) not found.")
+    st.info("Columns required for bubble chart missing.")
 
 # -------------------------------
 # Cleaning Impact
 # -------------------------------
-st.header("🧹 Cleaning Impact on Solar Modules")
-if "Cleaning" in df.columns and all(col in df.columns for col in ["ModA", "ModB"]):
-    cleaned_df = df.groupby("Cleaning")[["ModA", "ModB"]].mean().reset_index()
+st.header("🧹 Cleaning Impact on Modules")
+if "Cleaning" in df.columns and all(c in df.columns for c in ["ModA","ModB"]):
+    cleaned_df = df.groupby("Cleaning")[["ModA","ModB"]].mean().reset_index()
     fig4, ax = plt.subplots(figsize=(8,5))
-    cleaned_df.plot(kind="bar", x="Cleaning", y=["ModA", "ModB"], ax=ax, color=["#FFA500", "#32CD32"])
-    ax.set_xticklabels(["Before Cleaning", "After Cleaning"], rotation=0)
+    cleaned_df.plot(kind="bar", x="Cleaning", y=["ModA","ModB"], ax=ax, color=["#FFA500","#32CD32"])
+    ax.set_xticklabels(["Before Cleaning","After Cleaning"], rotation=0)
     ax.set_ylabel("Average Module Irradiance (W/m²)")
-    ax.set_title("Effect of Cleaning on Module Performance")
     st.pyplot(fig4)
 else:
-    st.info("Cleaning, ModA, or ModB columns not found in dataset.")
+    st.info("Cleaning, ModA, or ModB column missing.")
 
 # -------------------------------
 # Wind Rose Plot
 # -------------------------------
 st.header("🌬 Wind Rose Analysis")
-if all(col in df_plot.columns for col in ["WS", "WD"]):
+if all(c in df.columns for c in ["WS","WD"]):
     fig5 = plt.figure(figsize=(6,6))
     ax = WindroseAxes.from_ax(fig=fig5)
-    ax.bar(df_plot["WD"], df_plot["WS"], normed=True, opening=0.8, edgecolor='white', cmap=plt.cm.viridis)
+    ax.bar(df["WD"], df["WS"], normed=True, opening=0.8, edgecolor='white', cmap=plt.cm.viridis)
     ax.set_legend(title="Wind Speed (m/s)")
-    ax.set_title("Wind Rose")
     st.pyplot(fig5)
 else:
-    st.info("WS or WD columns not found for wind rose plot.")
+    st.info("WS or WD column missing.")
 
 # -------------------------------
 st.markdown("---")
