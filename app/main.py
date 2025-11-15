@@ -11,14 +11,13 @@ import numpy as np
 # Utility functions
 # -------------------------------
 @st.cache_data
-def load_country_data(country_name):
-    file_map = {
-        "Benin": "data/benin-malanville.csv",
-        "Sierra Leone": "data/sierraleone-bumbuna.csv",
-        "Togo": "data/togo-dapaong_qc.csv"
-    }
-    df = pd.read_csv(file_map[country_name], parse_dates=["Timestamp"])
-    return df
+def load_uploaded_data(uploaded_file):
+    try:
+        df = pd.read_csv(uploaded_file, parse_dates=["Timestamp"])
+        return df
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
 
 def get_summary_stats(df, columns=["GHI", "DNI", "DHI"]):
     return df[columns].agg(["mean", "median", "std"]).T.reset_index().rename(columns={"index": "Metric"})
@@ -33,79 +32,42 @@ def get_top_regions(df, metric="GHI", top_n=5):
 # Page Config
 # -------------------------------
 st.set_page_config(page_title="🌞 Solar Farm Dashboard", layout="wide")
-# -------------------------------
-# Custom Styling for Sidebar
-# -------------------------------
-st.markdown("""
-    <style>
-        /* Sidebar background color */
-        [data-testid="stSidebar"] {
-            background-color: #F8FBFF; /* light sky blue */
-            padding: 20px;
-        }
-
-        /* Sidebar title */
-        .sidebar-title {
-            font-size: 22px;
-            font-weight: bold;
-            color: #FFB000; /* Solar orange */
-            margin-bottom: 10px;
-        }
-
-        /* Sidebar labels */
-        [data-testid="stSidebar"] label {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333 !important; 
-        }
-
-        /* Sidebar multiselect box */
-        .stMultiSelect > div > div {
-            border: 2px solid #FFB000 !important;
-            border-radius: 8px;
-        }
-
-        /* Sidebar text */
-        [data-testid="stSidebar"] p {
-            color: #444;
-            font-size: 15px;
-        }
-
-        /* Hover effect for options */
-        .css-1n76uvr:hover {
-            background-color: #FFECB3 !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("🌞 Cross-Country Solar Farm Dashboard")
-st.sidebar.markdown('<p class="sidebar-title">🌍 Dashboard Controls</p>', unsafe_allow_html=True)
-
-st.markdown("Compare solar potential across Benin, Sierra Leone, and Togo")
 
 # -------------------------------
-# Sidebar - Country Selection
+# Sidebar - File Upload
 # -------------------------------
-st.sidebar.header("Select Countries")
-countries = st.sidebar.multiselect(
-    "Choose countries to visualize:",
-    options=["Benin", "Sierra Leone", "Togo"],
-    default=["Benin", "Sierra Leone", "Togo"]
+st.sidebar.header("Upload your dataset(s)")
+uploaded_files = st.sidebar.file_uploader(
+    "Upload CSV files for analysis (one per country):",
+    type=["csv"],
+    accept_multiple_files=True
 )
 
-if not countries:
-    st.warning("Please select at least one country!")
+if not uploaded_files:
+    st.warning("Please upload at least one CSV file to continue.")
     st.stop()
 
-# -------------------------------
-# Load Data
-# -------------------------------
-data_dict = {country: load_country_data(country) for country in countries}
+# Load all uploaded datasets into a dictionary
+data_dict = {}
+for uploaded_file in uploaded_files:
+    country_name = uploaded_file.name.split(".")[0]  # filename without extension
+    df = load_uploaded_data(uploaded_file)
+    if df is not None:
+        data_dict[country_name] = df
+
+if not data_dict:
+    st.warning("No valid CSV files loaded.")
+    st.stop()
+
+countries = list(data_dict.keys())
 
 # -------------------------------
 # Boxplots for GHI, DNI, DHI
 # -------------------------------
-st.header("☀️ Solar Irradiance Comparison by Country")
+st.title("🌞 Solar Farm Dashboard (User Upload Mode)")
+st.markdown("Compare solar potential across uploaded datasets")
+
+st.header("☀️ Solar Irradiance Comparison")
 for metric in ["GHI", "DNI", "DHI"]:
     st.subheader(f"{metric} Comparison")
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -126,7 +88,7 @@ for country, df in data_dict.items():
 # Interactive Time Series Plot
 # -------------------------------
 st.header("📈 Interactive Solar Trends")
-country_to_plot = st.selectbox("Select a country for time series plot:", countries)
+country_to_plot = st.selectbox("Select dataset for time series plot:", countries)
 metric_to_plot = st.selectbox("Select metric:", ["GHI", "DNI", "DHI"])
 df_plot = data_dict[country_to_plot]
 
@@ -149,10 +111,10 @@ for country, df in data_dict.items():
     st.table(get_top_regions(df, metric="GHI"))
 
 # -------------------------------
-# Bubble Chart: GHI vs Tamb with RH as bubble size
+# Bubble Chart
 # -------------------------------
 st.header("💨 Bubble Chart: GHI vs Ambient Temperature")
-country_for_bubble = st.selectbox("Select country for bubble chart:", countries, key="bubble")
+country_for_bubble = st.selectbox("Select dataset for bubble chart:", countries, key="bubble")
 df_bubble = data_dict[country_for_bubble]
 
 fig3 = px.scatter(
@@ -168,10 +130,10 @@ fig3 = px.scatter(
 st.plotly_chart(fig3, use_container_width=True)
 
 # -------------------------------
-# Cleaning Impact: ModA & ModB pre/post-clean
+# Cleaning Impact
 # -------------------------------
 st.header("🧹 Cleaning Impact on Solar Modules")
-country_clean = st.selectbox("Select country for cleaning impact:", countries, key="cleaning")
+country_clean = st.selectbox("Select dataset for cleaning impact:", countries, key="cleaning")
 df_clean = data_dict[country_clean]
 if "Cleaning" in df_clean.columns:
     cleaned_df = df_clean.groupby("Cleaning")[["ModA", "ModB"]].mean().reset_index()
@@ -188,7 +150,7 @@ else:
 # Wind Rose Plot
 # -------------------------------
 st.header("🌬 Wind Rose Analysis")
-country_wind = st.selectbox("Select country for wind rose:", countries, key="wind")
+country_wind = st.selectbox("Select dataset for wind rose:", countries, key="wind")
 df_wind = data_dict[country_wind]
 
 if "WS" in df_wind.columns and "WD" in df_wind.columns:
@@ -199,7 +161,7 @@ if "WS" in df_wind.columns and "WD" in df_wind.columns:
     ax.set_title(f"Wind Rose - {country_wind}")
     st.pyplot(fig5)
 else:
-    st.info("Wind data not available for this country.")
+    st.info("Wind data not available for this dataset.")
 
 st.markdown("---")
 st.markdown("Created by Samrawit Haileeyesus | Solar Data Discovery Challenge")
