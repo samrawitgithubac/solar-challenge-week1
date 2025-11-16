@@ -34,3 +34,4 @@
 ├── .gitignore
 ├── requirements.txt
 └── README.md
+this is the deloyed     solar analysis of  diffrent contry  https://samrawit.streamlit.app/
